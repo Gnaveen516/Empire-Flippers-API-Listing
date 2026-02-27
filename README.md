@@ -1,6 +1,6 @@
 # Empire Flippers Challenge
 
-<img width="990" height="615" alt="image" src="https://github.com/user-attachments/assets/6746ad65-c020-486e-a55e-a32c44b1b076" />
+<img width="990" height="535" alt="image" src="https://github.com/user-attachments/assets/6746ad65-c020-486e-a55e-a32c44b1b076" />
 
 
 A Rails API application that syncs listings from Empire Flippers API to a local PostgreSQL database and creates corresponding deals in HubSpot CRM.
