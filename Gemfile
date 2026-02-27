@@ -37,7 +37,7 @@ gem "image_processing", "~> 1.2"
 
 gem "httparty"
 gem "hubspot-api-client"
-gem "sidekiq", "~> 6.5"
+gem "sidekiq", "~> 8.0"
 gem "sidekiq-scheduler"
 gem "dotenv-rails"
 gem "connection_pool", "~> 2.4"
