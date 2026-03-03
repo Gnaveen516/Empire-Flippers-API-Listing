@@ -1,0 +1,5 @@
+:scheduler:
+  sync_listings_daily:
+    cron: '0 0 * * *'  # Run daily at midnight
+    class: SyncListingsJob
+    queue: default

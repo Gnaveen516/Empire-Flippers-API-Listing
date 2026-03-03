@@ -4,11 +4,16 @@ A Rails API application that syncs listings from Empire Flippers API to a local 
 
 ## Features
 
-- Fetches listings from Empire Flippers API
-- Stores listings locally in PostgreSQL
-- Creates HubSpot deals for "For Sale" listings
-- Prevents duplicate deals in HubSpot
+- Fetches ALL listings from Empire Flippers API (with pagination)
+- Stores listings locally in PostgreSQL with summary field
+- Creates HubSpot deals for "For Sale" listings with:
+  - Deal Name: "Listing #[listing_number]"
+  - Amount: listing price
+  - Close Date: 30 days from current time
+  - Description: listing summary
+- Prevents duplicate deals using database-based tracking (hubspot_deal_id)
 - Prevents duplicate listings in database
+- Automated daily sync using Sidekiq Scheduler
 - Full test coverage with RSpec and WebMock
 
 ## Tech Stack
@@ -16,9 +21,10 @@ A Rails API application that syncs listings from Empire Flippers API to a local 
 - Ruby 3.3.6
 - Rails 7.2
 - PostgreSQL
+- Redis (for Sidekiq)
 - HTTParty (API requests)
 - HubSpot API Client
-- Sidekiq (background jobs)
+- Sidekiq + Sidekiq-Scheduler (background jobs & scheduling)
 - RSpec + WebMock (testing)
 
 ## Setup Instructions
@@ -27,6 +33,7 @@ A Rails API application that syncs listings from Empire Flippers API to a local 
 
 - Ruby 3.3.6
 - PostgreSQL
+- Redis (for Sidekiq)
 - Bundler
 
 ### Installation
@@ -65,7 +72,30 @@ HUBSPOT_ACCESS_TOKEN=your_hubspot_token_here
 
 ## Running the Application
 
-### Sync Listings
+### Start Redis (Required for Sidekiq)
+
+```bash
+# macOS
+brew services start redis
+
+# Linux
+sudo service redis-server start
+
+# Or run in foreground
+redis-server
+```
+
+### Start Sidekiq (For Daily Scheduled Sync)
+
+In a separate terminal:
+
+```bash
+bundle exec sidekiq
+```
+
+Sidekiq will automatically run the sync job daily at midnight (configured in `config/sidekiq.yml`).
+
+### Manual Sync (Optional)
 
 Run the sync service from Rails console:
 
@@ -118,18 +148,29 @@ bundle exec rspec spec/services/ef_sync_service_spec.rb
 
 ```
 app/
+├── jobs/
+│   └── sync_listings_job.rb    # Daily scheduled job
 ├── models/
 │   └── listing.rb              # Listing model
 └── services/
     └── ef_sync_service.rb      # Main sync service
 
+config/
+├── initializers/
+│   └── sidekiq.rb              # Sidekiq configuration
+└── sidekiq.yml                 # Sidekiq scheduler config
+
 spec/
+├── jobs/
+│   └── sync_listings_job_spec.rb  # Job tests
 └── services/
-    └── ef_sync_service_spec.rb # Service tests
+    └── ef_sync_service_spec.rb    # Service tests
 
 db/
 └── migrate/
-    └── [timestamp]_create_listings.rb
+    ├── [timestamp]_create_listings.rb
+    ├── [timestamp]_add_summary_to_listings.rb
+    └── [timestamp]_add_hubspot_deal_id_to_listings.rb
 ```
 
 ## API Endpoints Used
@@ -139,12 +180,18 @@ db/
 
 ## How It Works
 
-1. `EfSyncService.sync` fetches listings from Empire Flippers API
-2. Each listing is saved to the local database (or updated if exists)
-3. For "For Sale" listings, the service:
-   - Searches HubSpot for existing deal with name "Listing #[listing_number]"
-   - Creates a new deal only if it doesn't exist
-   - Skips creation if deal already exists (prevents duplicates)
+1. Sidekiq Scheduler runs `SyncListingsJob` daily at midnight
+2. Job calls `EfSyncService.sync` which:
+   - Fetches ALL pages of listings from Empire Flippers API (pagination loop)
+   - Saves each listing to the local database with summary
+   - For "For Sale" listings without a `hubspot_deal_id`:
+     - Creates a new HubSpot deal with:
+       - Deal Name: "Listing #[listing_number]"
+       - Amount: listing price
+       - Close Date: 30 days from now
+       - Description: listing summary
+     - Stores the HubSpot deal ID in the database
+   - Skips deal creation if listing already has a `hubspot_deal_id` (prevents duplicates)
 
 ## Database Schema
 
@@ -152,6 +199,8 @@ db/
 - `listing_number` (string) - Unique identifier
 - `price` (integer) - Listing price
 - `status` (string) - Listing status (e.g., "For Sale")
+- `summary` (text) - Listing description/summary
+- `hubspot_deal_id` (string) - HubSpot deal ID for duplicate prevention
 - `created_at` (datetime)
 - `updated_at` (datetime)
 
@@ -163,11 +212,15 @@ Tests use WebMock to stub external API calls, ensuring:
 - Predictable test results
 
 Test coverage includes:
-- ✅ Fetching and saving listings
-- ✅ Creating HubSpot deals
-- ✅ Preventing duplicate deals
+- ✅ Fetching all pages of listings (pagination)
+- ✅ Saving listings with summary field
+- ✅ Creating HubSpot deals with all required properties
+- ✅ Close date set to 30 days from now
+- ✅ Description populated from summary
+- ✅ Preventing duplicate deals using database tracking
 - ✅ Preventing duplicate listings
 - ✅ Handling missing HubSpot token
+- ✅ Daily sync job execution
 
 ## Troubleshooting
 
